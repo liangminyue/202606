@@ -31,9 +31,12 @@ warnings.filterwarnings('ignore')
 import sys
 import types
 
-class MT19937:
-    def __new__(cls, *args, **kwargs):
-        return np.random.RandomState()
+try:
+    from numpy.random import MT19937
+except ImportError:
+    from numpy.random._mt19937 import MT19937
+
+np.random.bit_generator['MT19937'] = MT19937
 
 _mt19937_module = types.ModuleType('numpy.random._mt19937')
 _mt19937_module.MT19937 = MT19937
