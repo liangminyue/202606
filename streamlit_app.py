@@ -1230,9 +1230,9 @@ def main():
                 input_data = pd.DataFrame([inputs])
                 
                 # 调试信息
-                st.debug(f"输入数据列名: {input_data.columns.tolist()}")
-                st.debug(f"模型特征名称: {predictor.feature_names}")
-                st.debug(f"模型类型: {predictor.model_info.get('model_type', '未知')}")
+                print(f"输入数据列名: {input_data.columns.tolist()}")
+                print(f"模型特征名称: {predictor.feature_names}")
+                print(f"模型类型: {predictor.model_info.get('model_type', '未知')}")
                 
                 # 预测
                 prediction = predictor.predict(input_data)
