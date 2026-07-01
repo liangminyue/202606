@@ -37,6 +37,13 @@ class MT19937:
 
 numpy.random._mt19937.MT19937 = MT19937
 
+class CompatibilityUnpickler(pickle.Unpickler):
+    """兼容旧版本numpy随机数生成器的自定义Unpickler"""
+    def find_class(self, module, name):
+        if module == 'numpy.random._mt19937' and name == 'MT19937':
+            return MT19937
+        return super().find_class(module, name)
+
 def load_model_with_compatibility(model_path):
     """加载旧版本numpy保存的模型，处理MT19937兼容性问题"""
     try:
@@ -44,19 +51,8 @@ def load_model_with_compatibility(model_path):
     except Exception as e:
         if 'MT19937' in str(e) or 'BitGenerator' in str(e):
             with open(model_path, 'rb') as f:
-                u = pickle.Unpickler(f)
-                u.find_class = _find_class_with_compatibility
-                return u.load()
+                return CompatibilityUnpickler(f).load()
         raise
-
-def _find_class_with_compatibility(module, name):
-    """自定义类查找函数，处理numpy.random._mt19937.MT19937兼容性"""
-    if module == 'numpy.random._mt19937' and name == 'MT19937':
-        return MT19937
-    try:
-        return getattr(__import__(module, fromlist=['']), name)
-    except (ImportError, AttributeError):
-        return pickle.Unpickler.find_class(None, module, name)
 
 # 导入配置模块
 from config import Config
