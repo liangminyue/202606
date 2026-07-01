@@ -50,6 +50,19 @@ try:
 except Exception:
     pass
 
+try:
+    import numpy.random._bit_generator
+    if 'MT19937' not in numpy.random._bit_generator.BitGenerator._registry:
+        numpy.random._bit_generator.BitGenerator._registry['MT19937'] = MT19937
+except Exception:
+    pass
+
+try:
+    if isinstance(np.random.bit_generator, dict):
+        np.random.bit_generator['MT19937'] = MT19937
+except Exception:
+    pass
+
 def load_model_with_compatibility(model_path):
     """加载旧版本numpy保存的模型，处理MT19937兼容性问题"""
     return joblib.load(model_path)
