@@ -339,7 +339,15 @@ class ModelPredictor:
     def load_model(self, model_path):
         """加载模型"""
         try:
-            # 加载模型
+            import numpy as np
+            import pickle
+            
+            class MT19937:
+                def __new__(cls, *args, **kwargs):
+                    return np.random.RandomState()
+            
+            np.random._mt19937.MT19937 = MT19937
+            
             self.model = joblib.load(model_path)
             self.model_loaded = True
             
