@@ -11,3 +11,4 @@ seaborn==0.13.2
 openpyxl==3.1.5
 fonttools==4.54.1
 scipy==1.13.1
+shap==0.42.0
