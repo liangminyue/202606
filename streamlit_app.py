@@ -28,6 +28,36 @@ import json
 import warnings
 warnings.filterwarnings('ignore')
 
+import pickle
+import numpy.random._mt19937
+
+class MT19937:
+    def __new__(cls, *args, **kwargs):
+        return np.random.RandomState()
+
+numpy.random._mt19937.MT19937 = MT19937
+
+def load_model_with_compatibility(model_path):
+    """加载旧版本numpy保存的模型，处理MT19937兼容性问题"""
+    try:
+        return joblib.load(model_path)
+    except Exception as e:
+        if 'MT19937' in str(e) or 'BitGenerator' in str(e):
+            with open(model_path, 'rb') as f:
+                u = pickle.Unpickler(f)
+                u.find_class = _find_class_with_compatibility
+                return u.load()
+        raise
+
+def _find_class_with_compatibility(module, name):
+    """自定义类查找函数，处理numpy.random._mt19937.MT19937兼容性"""
+    if module == 'numpy.random._mt19937' and name == 'MT19937':
+        return MT19937
+    try:
+        return getattr(__import__(module, fromlist=['']), name)
+    except (ImportError, AttributeError):
+        return pickle.Unpickler.find_class(None, module, name)
+
 # 导入配置模块
 from config import Config
 
@@ -339,16 +369,7 @@ class ModelPredictor:
     def load_model(self, model_path):
         """加载模型"""
         try:
-            import numpy as np
-            import pickle
-            
-            class MT19937:
-                def __new__(cls, *args, **kwargs):
-                    return np.random.RandomState()
-            
-            np.random._mt19937.MT19937 = MT19937
-            
-            self.model = joblib.load(model_path)
+            self.model = load_model_with_compatibility(model_path)
             self.model_loaded = True
             
             # 提取模型信息
