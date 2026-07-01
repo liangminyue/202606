@@ -1076,6 +1076,14 @@ def load_features_from_csv():
                     'step': 0.5,
                     'type': 'numerical'
                 }
+            elif 'PLT' in feat or 'plt' in feat.lower():
+                feature_defaults[feat] = {
+                    'default': 300.0,
+                    'min': 30.0,
+                    'max': 1200.0,
+                    'step': 1.0,
+                    'type': 'numerical'
+                }
             else:
                 feature_defaults[feat] = {
                     'default': 0.0,
