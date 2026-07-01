@@ -29,7 +29,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # 导入配置模块
-from config import config
+from config import Config
 
 # 设置页面配置
 st.set_page_config(
