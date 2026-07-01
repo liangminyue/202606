@@ -36,11 +36,19 @@ try:
 except ImportError:
     from numpy.random._mt19937 import MT19937
 
-np.random.bit_generator['MT19937'] = MT19937
-
 _mt19937_module = types.ModuleType('numpy.random._mt19937')
 _mt19937_module.MT19937 = MT19937
+_mt19937_module.__package__ = 'numpy.random'
+_mt19937_module.__file__ = __file__
 sys.modules['numpy.random._mt19937'] = _mt19937_module
+
+np.random._mt19937 = _mt19937_module
+
+try:
+    if not hasattr(np.random, 'MT19937'):
+        np.random.MT19937 = MT19937
+except Exception:
+    pass
 
 def load_model_with_compatibility(model_path):
     """加载旧版本numpy保存的模型，处理MT19937兼容性问题"""
