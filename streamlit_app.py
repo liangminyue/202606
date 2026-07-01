@@ -479,7 +479,7 @@ class ModelPredictor:
         """获取SHAP解释值
         
         对于不同类型的模型使用不同的SHAP解释方法：
-        - 高斯过程回归(GaussianProcessRegressor)：使用GradientExplainer或自定义梯度近似
+        - 高斯过程回归(GaussianProcessRegressor)：使用数值梯度方法（leave-one-out边际贡献）
         - 其他模型：使用KernelExplainer在原始特征空间计算SHAP值
         """
         try:
@@ -527,10 +527,6 @@ class ModelPredictor:
                 # 预测
                 result = self.model.predict(X)
                 
-                # 高斯过程回归可能返回均值和方差两个值，只取均值
-                if isinstance(result, tuple):
-                    result = result[0]
-                
                 # 确保返回的是1D数组
                 if hasattr(result, 'ndim') and result.ndim > 1:
                     result = result.flatten()
@@ -543,7 +539,7 @@ class ModelPredictor:
             
             # 创建背景数据集 - 使用基于特征名称的合理临床范围
             background_samples = []
-            for i in range(50):  # 创建50个背景样本，增加样本数量提高稳定性
+            for i in range(50):  # 创建50个背景样本
                 sample_dict = {}
                 for feat in self.feature_names:
                     feat_lower = str(feat).lower()
@@ -565,101 +561,24 @@ class ModelPredictor:
             
             background_df = pd.DataFrame(background_samples)
             
-            # 对于高斯过程回归模型，使用特殊处理
+            # 对于高斯过程回归模型，直接使用数值梯度方法
+            # GradientExplainer不支持sklearn模型，KernelExplainer对GP不稳定
             if is_gp_model:
-                # 高斯过程回归使用GradientExplainer（通过包装成可微模型）
-                # 或者使用数值梯度近似来计算SHAP值
-                try:
-                    # 方法1：尝试使用GradientExplainer
-                    # 将模型包装为可调用对象
-                    def model_wrapper(X):
-                        return full_model_predict(X).reshape(-1, 1)
-                    
-                    explainer = shap.GradientExplainer(
-                        model_wrapper, 
-                        background_df.values,
-                        local_smoothing=0.01
-                    )
-                    
-                    shap_values = explainer.shap_values(input_df.values)
-                except Exception as gp_error:
-                    # GradientExplainer失败时，使用KernelExplainer但增加稳定性参数
-                    st.warning(f"GradientExplainer失败，使用KernelExplainer: {str(gp_error)}")
-                    # 增加KernelExplainer的稳定性参数
-                    explainer = shap.KernelExplainer(
-                        full_model_predict, 
-                        background_df,
-                        link="identity",
-                        kernel="rbf"
-                    )
-                    # 使用更高的采样次数提高稳定性
-                    shap_values = explainer.shap_values(input_df, nsamples=500)
+                shap_values = self._compute_gp_shap_numerical(input_df, background_df)
+                explainer = None
             else:
                 # 使用KernelExplainer在原始特征空间计算SHAP值
                 explainer = shap.KernelExplainer(full_model_predict, background_df)
                 shap_values = explainer.shap_values(input_df)
-            
-            # 处理SHAP值格式
-            if isinstance(shap_values, list):
-                shap_values = shap_values[0]  # 对于多输出模型
-            
-            # 确保shap_values是正确的形状（单个样本）
-            if hasattr(shap_values, 'shape'):
-                # 处理二维数组情况
-                if len(shap_values.shape) > 1:
+                
+                # 处理SHAP值格式
+                if isinstance(shap_values, list):
+                    shap_values = shap_values[0]
+                
+                # 确保shap_values是正确的形状（单个样本）
+                if hasattr(shap_values, 'shape') and len(shap_values.shape) > 1:
                     if shap_values.shape[0] == 1:
                         shap_values = shap_values[0]
-                    # 处理 (n_samples, n_features, 1) 的情况
-                    elif len(shap_values.shape) == 3 and shap_values.shape[2] == 1:
-                        shap_values = shap_values.reshape(shap_values.shape[0], shap_values.shape[1])
-                        if shap_values.shape[0] == 1:
-                            shap_values = shap_values[0]
-            
-            # 验证SHAP值是否全为0，如果是则尝试重新计算
-            if hasattr(shap_values, 'shape') or isinstance(shap_values, (list, np.ndarray)):
-                shap_array = np.array(shap_values)
-                if np.allclose(shap_array, 0, atol=1e-10):
-                    st.warning("检测到SHAP值全为0，尝试使用更优化的参数重新计算...")
-                    # 使用不同的方法重新计算
-                    try:
-                        # 使用更密集的背景数据
-                        dense_background = []
-                        for _ in range(100):
-                            sample_dict = {}
-                            for feat in self.feature_names:
-                                feat_lower = str(feat).lower()
-                                if '输血' in str(feat):
-                                    sample_dict[feat] = np.random.uniform(0, 15)
-                                elif 'hb' in feat_lower or 'hgb' in feat_lower:
-                                    sample_dict[feat] = np.random.uniform(40, 180)
-                                elif '年龄' in str(feat):
-                                    sample_dict[feat] = np.random.randint(0, 100)
-                                elif '身高' in str(feat):
-                                    sample_dict[feat] = np.random.randint(80, 220)
-                                elif '体重' in str(feat):
-                                    sample_dict[feat] = np.random.uniform(10, 200)
-                                elif 'plt' in feat_lower:
-                                    sample_dict[feat] = np.random.uniform(50, 500)
-                                else:
-                                    sample_dict[feat] = np.random.uniform(0, 100)
-                            dense_background.append(sample_dict)
-                        
-                        dense_background_df = pd.DataFrame(dense_background)
-                        
-                        if is_gp_model:
-                            # 对于高斯过程，使用数值梯度方法计算SHAP值
-                            shap_values = self._compute_gp_shap_numerical(
-                                input_df, dense_background_df
-                            )
-                        else:
-                            explainer = shap.KernelExplainer(
-                                full_model_predict, 
-                                dense_background_df,
-                                link="identity"
-                            )
-                            shap_values = explainer.shap_values(input_df, nsamples=1000)
-                    except Exception as retry_error:
-                        st.warning(f"重新计算SHAP值失败: {str(retry_error)}")
             
             return explainer, shap_values, self.feature_names
         except Exception as e:
@@ -672,7 +591,7 @@ class ModelPredictor:
         """使用数值梯度方法计算高斯过程回归的SHAP值
         
         对于高斯过程回归等难以使用标准SHAP解释器的模型，
-        使用数值方法近似计算每个特征的贡献。
+        使用leave-one-out边际贡献方法近似计算每个特征的贡献。
         
         参数:
             input_df (pd.DataFrame): 待解释的输入数据
@@ -682,13 +601,9 @@ class ModelPredictor:
             np.ndarray: SHAP值数组
         """
         try:
-            # 计算背景数据的预测值作为基线
-            baseline_pred = np.mean(self.model.predict(background_df[self.feature_names]))
-            
-            # 获取输入数据的预测值
+            # 获取输入数据的预测值（Pipeline.predict返回ndarray）
             input_pred = self.model.predict(input_df[self.feature_names])
-            if isinstance(input_pred, tuple):
-                input_pred = input_pred[0]
+            # 确保获取标量值
             if hasattr(input_pred, 'ndim') and input_pred.ndim > 0:
                 input_pred = input_pred[0]
             
@@ -708,8 +623,7 @@ class ModelPredictor:
                 masked_df = pd.DataFrame([masked_input], columns=self.feature_names)
                 masked_pred = self.model.predict(masked_df)
                 
-                if isinstance(masked_pred, tuple):
-                    masked_pred = masked_pred[0]
+                # 确保获取标量值
                 if hasattr(masked_pred, 'ndim') and masked_pred.ndim > 0:
                     masked_pred = masked_pred[0]
                 
