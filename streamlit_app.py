@@ -28,45 +28,6 @@ import json
 import warnings
 warnings.filterwarnings('ignore')
 
-import sys
-import types
-
-try:
-    from numpy.random import MT19937
-except ImportError:
-    from numpy.random._mt19937 import MT19937
-
-_mt19937_module = types.ModuleType('numpy.random._mt19937')
-_mt19937_module.MT19937 = MT19937
-_mt19937_module.__package__ = 'numpy.random'
-_mt19937_module.__file__ = __file__
-sys.modules['numpy.random._mt19937'] = _mt19937_module
-
-np.random._mt19937 = _mt19937_module
-
-try:
-    if not hasattr(np.random, 'MT19937'):
-        np.random.MT19937 = MT19937
-except Exception:
-    pass
-
-try:
-    import numpy.random._bit_generator
-    if 'MT19937' not in numpy.random._bit_generator.BitGenerator._registry:
-        numpy.random._bit_generator.BitGenerator._registry['MT19937'] = MT19937
-except Exception:
-    pass
-
-try:
-    if isinstance(np.random.bit_generator, dict):
-        np.random.bit_generator['MT19937'] = MT19937
-except Exception:
-    pass
-
-def load_model_with_compatibility(model_path):
-    """加载旧版本numpy保存的模型，处理MT19937兼容性问题"""
-    return joblib.load(model_path)
-
 # 导入配置模块
 from config import Config
 
@@ -378,7 +339,7 @@ class ModelPredictor:
     def load_model(self, model_path):
         """加载模型"""
         try:
-            self.model = load_model_with_compatibility(model_path)
+            self.model = joblib.load(model_path)
             self.model_loaded = True
             
             # 提取模型信息
