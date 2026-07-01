@@ -9,7 +9,10 @@
 import os  # 导入操作系统接口模块，用于读取环境变量
 from pathlib import Path  # 从pathlib导入Path类，用于路径处理
 
-from skopt.space import Real, Integer, Categorical  # 从skopt.space导入参数空间定义工具，用于定义搜索空间，指定超参数的取值范围和类型
+try:
+    from skopt.space import Real, Integer, Categorical
+except ImportError:
+    Real = Integer = Categorical = None
 from sklearn.linear_model import LinearRegression, Lasso, Ridge, ElasticNet, BayesianRidge  # 从sklearn导入线性模型，包括线性回归、Lasso回归、岭回归、弹性网络和贝叶斯岭回归
 from sklearn.neural_network import MLPRegressor  # 从sklearn导入多层感知机回归器，用于神经网络回归
 from sklearn.neighbors import KNeighborsRegressor  # 从sklearn导入K近邻回归器
@@ -18,8 +21,14 @@ from sklearn.ensemble import (GradientBoostingRegressor, AdaBoostRegressor,
                               RandomForestRegressor, ExtraTreesRegressor)  # 从sklearn导入集成学习模型，包括梯度提升、AdaBoost、随机森林和极端随机树
 from sklearn.gaussian_process import GaussianProcessRegressor  # 从sklearn导入高斯过程回归模型
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, WhiteKernel  # 从sklearn导入高斯过程核函数
-import xgboost as xgb  # 导入XGBoost库
-import lightgbm as lgb  # 导入LightGBM库
+try:
+    import xgboost as xgb
+except ImportError:
+    xgb = None
+try:
+    import lightgbm as lgb
+except ImportError:
+    lgb = None
 from sklearn.svm import SVR  # 从sklearn导入支持向量回归器，用于支持向量机回归
 from sklearn.preprocessing import PolynomialFeatures  # 从sklearn导入多项式特征生成器，用于多项式回归
 from sklearn.pipeline import Pipeline  # 从sklearn导入管道工具，用于组合多个处理步骤
@@ -612,258 +621,201 @@ class Config:
         print("配置参数验证通过")
 
 
-# 模型配置字典，集中管理所有模型和参数空间
-# 修改MODEL_CONFIG中的模型配置，确保所有模型都有固定随机种子
-MODEL_CONFIG = {  # 定义模型配置字典，包含各种回归模型及其参数空间
-    '线性回归': {  # 线性回归模型配置
-        'model': LinearRegression(),  # 创建线性回归模型实例
-        'param_space': {}  # 线性回归没有需要调优的超参数
-    },
-    '岭回归': {  # 岭回归模型配置
-        'model': Ridge(  # 创建岭回归模型实例
-            random_state=Config.RANDOM_STATE  # 设置随机种子以确保结果一致性
-        ),
-        'param_space': {  # 岭回归超参数搜索空间
-            'model__alpha': Real(0.001, 100, prior='log-uniform')  # 正则化强度参数，使用对数均匀分布
-        }
-    },
-    'Lasso回归': {  # Lasso回归模型配置
-        'model': Lasso(  # 创建Lasso回归模型实例
-            max_iter=Config.LASSO_MAX_ITER,  # 设置最大迭代次数
-            random_state=Config.RANDOM_STATE  # 设置随机种子以确保结果一致性
-        ),
-        'param_space': {  # Lasso回归超参数搜索空间
-            'model__alpha': Real(0.001, 100, prior='log-uniform')  # 正则化强度参数，使用对数均匀分布
-        }
-    },
-    'K近邻回归': {  # K近邻回归模型配置
-        'model': KNeighborsRegressor(n_neighbors=5),  # 创建K近邻回归模型实例，设置邻居数为5
-        'param_space': {  # K近邻回归超参数搜索空间
-            'model__n_neighbors': Integer(3, 15),  # 邻居数，整数范围3到15
-            'model__weights': Categorical(['uniform', 'distance']),  # 权重方式，分类选项
-            'model__metric': Categorical(['euclidean', 'manhattan'])  # 距离度量方式，分类选项
-        }
-    },
-    '决策树': {  # 决策树回归模型配置
-        'model': DecisionTreeRegressor(  # 创建决策树回归模型实例
-            random_state=Config.RANDOM_STATE  # 设置随机种子以确保结果一致性
-        ),
-        'param_space': {  # 决策树超参数搜索空间
-            'model__max_depth': Integer(2, 10),  # 树最大深度，整数范围2到10
-            'model__min_samples_split': Integer(2, 20),  # 最小分裂样本数，整数范围2到20
-            'model__min_samples_leaf': Integer(1, 10),  # 叶子节点最小样本数，整数范围1到10
-            'model__max_features': Categorical(['sqrt', 'log2', None])  # 最大特征数，分类选项
-        }
-    },
-    '随机森林': {  # 随机森林回归模型配置
-        'model': RandomForestRegressor(  # 创建随机森林回归模型实例
-            n_estimators=Config.RF_N_ESTIMATORS,  # 设置决策树数量（使用配置常量）
-            random_state=Config.RANDOM_STATE  # 设置随机种子以确保结果一致性
-        ),
-        'param_space': {  # 随机森林超参数搜索空间
-            'model__n_estimators': Integer(50, 200),  # 决策树数量，整数范围50到200
-            'model__max_depth': Integer(3, 12),  # 树最大深度，整数范围3到12
-            'model__min_samples_split': Integer(2, 20),  # 最小分裂样本数，整数范围2到20
-            'model__min_samples_leaf': Integer(1, 10),  # 叶子节点最小样本数，整数范围1到10
-            'model__max_features': Categorical(['sqrt', 'log2', None])  # 最大特征数，分类选项
-        }
-    },
-    '梯度提升': {  # 梯度提升回归模型配置
-        'model': GradientBoostingRegressor(  # 创建梯度提升回归模型实例
-            n_estimators=Config.GB_N_ESTIMATORS,  # 设置弱学习器数量（使用配置常量）
-            random_state=Config.RANDOM_STATE  # 设置随机种子以确保结果一致性
-        ),
-        'param_space': {  # 梯度提升超参数搜索空间
-            'model__n_estimators': Integer(50, 200),  # 弱学习器数量，整数范围50到200
-            'model__learning_rate': Real(0.01, 0.3, prior='log-uniform'),  # 学习率，使用对数均匀分布
-            'model__max_depth': Integer(2, 8),  # 树最大深度，整数范围2到8
-            'model__min_samples_split': Integer(2, 20),  # 最小分裂样本数，整数范围2到20
-            'model__min_samples_leaf': Integer(1, 10)  # 叶子节点最小样本数，整数范围1到10
-        }
-    },
-    'AdaBoost': {  # AdaBoost回归模型配置
-        'model': AdaBoostRegressor(  # 创建AdaBoost回归模型实例
-            n_estimators=Config.ADA_N_ESTIMATORS,  # 设置弱学习器数量（使用配置常量）
-            random_state=Config.RANDOM_STATE  # 设置随机种子以确保结果一致性
-        ),
-        'param_space': {  # AdaBoost超参数搜索空间
-            'model__n_estimators': Integer(50, 200),  # 弱学习器数量，整数范围50到200
-            'model__learning_rate': Real(0.01, 1.0, prior='log-uniform')  # 学习率，使用对数均匀分布
-        }
-    },
-    '多层感知机': {  # 多层感知机回归模型配置
-        'model': MLPRegressor(  # 创建多层感知机回归模型实例
-            hidden_layer_sizes=(100,),  # 设置隐藏层大小为100
-            max_iter=Config.MAX_ITER,  # 设置最大迭代次数
-            random_state=Config.RANDOM_STATE,  # 设置随机种子以确保结果一致性
-            early_stopping=True  # 启用早停机制，防止过拟合
-        ),
-        'param_space': {  # 多层感知机超参数搜索空间
-            'model__hidden_layer_sizes': Categorical([(50,), (100,), (50, 50), (100, 50), (100, 100)]),  # 隐藏层大小配置，分类选项
-            'model__activation': Categorical(['relu', 'tanh', 'logistic']),  # 激活函数类型，分类选项
-            'model__solver': Categorical(['adam', 'sgd']),  # 优化器类型，分类选项
-            'model__learning_rate_init': Real(0.0001, 0.1, prior='log-uniform'),  # 初始学习率，使用对数均匀分布
-            'model__alpha': Real(0.0001, 0.1, prior='log-uniform')  # L2正则化强度，使用对数均匀分布
-        }
-    },
-    'XGBoost': {  # XGBoost回归模型配置
-        'model': xgb.XGBRegressor(  # 创建XGBoost回归模型实例
-            n_estimators=Config.XGB_N_ESTIMATORS,  # 设置弱学习器数量（使用配置常量）
-            objective='reg:squarederror',  # 设置目标函数为平方误差
-            random_state=Config.RANDOM_STATE,  # 设置随机种子以确保结果一致性
-            verbosity=0  # 关闭训练过程输出
-        ),
-        'param_space': {  # XGBoost超参数搜索空间
-            'model__n_estimators': Integer(50, 200),  # 弱学习器数量，整数范围50到200
-            'model__learning_rate': Real(0.01, 0.3, prior='log-uniform'),  # 学习率，使用对数均匀分布
-            'model__max_depth': Integer(2, 8),  # 树最大深度，整数范围2到8
-            'model__subsample': Real(0.5, 1.0),  # 采样比例，实数范围0.5到1.0
-            'model__colsample_bytree': Real(0.5, 1.0),  # 列采样比例，实数范围0.5到1.0
-            'model__reg_alpha': Real(0.0, 10.0),  # L1正则化系数，实数范围0.0到10.0
-            'model__reg_lambda': Real(0.0, 10.0)  # L2正则化系数，实数范围0.0到10.0
-        }
-    },
-    'LightGBM': {  # LightGBM回归模型配置
-        'model': lgb.LGBMRegressor(  # 创建LightGBM回归模型实例
-            n_estimators=Config.LGB_N_ESTIMATORS,  # 设置弱学习器数量（使用配置常量）
-            random_state=Config.RANDOM_STATE,  # 设置随机种子以确保结果一致性
-            verbose=-1  # 关闭训练过程输出
-        ),
-        'param_space': {  # LightGBM超参数搜索空间
-            'model__n_estimators': Integer(50, 200),  # 弱学习器数量，整数范围50到200
-            'model__learning_rate': Real(0.01, 0.3, prior='log-uniform'),  # 学习率，使用对数均匀分布
-            'model__max_depth': Integer(2, 8),  # 树最大深度，整数范围2到8
-            'model__num_leaves': Integer(15, 127),  # 叶子节点数量，整数范围15到127
-            'model__subsample': Real(0.5, 1.0),  # 采样比例，实数范围0.5到1.0
-            'model__colsample_bytree': Real(0.5, 1.0),  # 列采样比例，实数范围0.5到1.0
-            'model__reg_alpha': Real(0.0, 10.0),  # L1正则化系数，实数范围0.0到10.0
-            'model__reg_lambda': Real(0.0, 10.0)  # L2正则化系数，实数范围0.0到10.0
-        }
-    },
-    '极端随机树': {  # 极端随机树回归模型配置
-        'model': ExtraTreesRegressor(  # 创建极端随机树回归模型实例
-            n_estimators=Config.ET_N_ESTIMATORS,  # 设置决策树数量（使用配置常量）
-            random_state=Config.RANDOM_STATE  # 设置随机种子以确保结果一致性
-        ),
-        'param_space': {  # 极端随机树超参数搜索空间
-            'model__n_estimators': Integer(50, 200),  # 决策树数量，整数范围50到200
-            'model__max_depth': Integer(3, 12),  # 树最大深度，整数范围3到12
-            'model__min_samples_split': Integer(2, 20),  # 最小分裂样本数，整数范围2到20
-            'model__min_samples_leaf': Integer(1, 10),  # 叶子节点最小样本数，整数范围1到10
-            'model__max_features': Categorical(['sqrt', 'log2', None])  # 最大特征数，分类选项
-        }
-    },
-    '弹性网络': {  # 弹性网络回归模型配置
-        'model': ElasticNet(  # 创建弹性网络回归模型实例
-            max_iter=Config.MAX_ITER,  # 设置最大迭代次数
-            random_state=Config.RANDOM_STATE  # 设置随机种子以确保结果一致性
-        ),
-        'param_space': {  # 弹性网络超参数搜索空间
-            'model__alpha': Real(0.0001, 100, prior='log-uniform'),  # 正则化强度参数，使用对数均匀分布
-            'model__l1_ratio': Real(0.0, 1.0)  # L1与L2正则化比例，实数范围0.0到1.0
-        }
-    },
-    '高斯过程回归': {  # 高斯过程回归模型配置
-        'model': GaussianProcessRegressor(  # 创建高斯过程回归模型实例
-            random_state=Config.RANDOM_STATE,  # 设置随机种子以确保结果一致性
-            kernel=ConstantKernel(1.0) * RBF(length_scale=1.0) + WhiteKernel(noise_level=1.0),  # 设置默认核函数
-            normalize_y=True,  # 标准化目标变量
-            n_restarts_optimizer=3  # 启用优化器重启，寻找更好的核函数参数
-        ),
-        'param_space': {  # 高斯过程回归超参数搜索空间
-            'model__alpha': Real(1e-10, 1.0, prior='log-uniform')  # 噪声水平，使用对数均匀分布
-        }
-    },
-    '贝叶斯岭回归': {  # 贝叶斯岭回归模型配置
-        'model': BayesianRidge(  # 创建贝叶斯岭回归模型实例
-            compute_score=True,  # 计算模型分数
-            max_iter=300  # 最大迭代次数
-        ),
-        'param_space': {  # 贝叶斯岭回归超参数搜索空间
-            'model__alpha_1': Real(1e-10, 1e-5, prior='log-uniform'),  # 先验alpha参数
-            'model__alpha_2': Real(1e-10, 1e-5, prior='log-uniform'),  # 先验alpha参数
-            'model__lambda_1': Real(1e-10, 1e-5, prior='log-uniform'),  # 先验lambda参数
-            'model__lambda_2': Real(1e-10, 1e-5, prior='log-uniform'),  # 先验lambda参数
-            'model__alpha_init': Real(0.001, 1, prior='log-uniform'),  # 初始alpha值
-            'model__lambda_init': Real(0.001, 1, prior='log-uniform')  # 初始lambda值
-        }
-    },
-    '多项式回归': {  # 多项式回归模型配置
-        'model': Pipeline(steps=[
-            ('poly', PolynomialFeatures(degree=2, include_bias=False)),  # 创建多项式特征生成器，设置多项式次数为2
-            ('linear', LinearRegression())  # 使用线性回归作为基础模型
-        ]),
-        'param_space': {  # 多项式回归超参数搜索空间
-            'model__poly__degree': Integer(2, 5),  # 多项式次数，整数范围2到5（外层Pipeline前缀为model__）
-            'model__poly__include_bias': Categorical([False])  # 是否包含偏差项，设置为False避免与线性回归的截距重复
-        }
-    },
-    '支持向量机': {  # 支持向量机回归模型配置
-        'model': SVR(
-            kernel='rbf',  # 使用径向基函数作为核函数
-            gamma='scale',  # 使用缩放后的gamma值
-            max_iter=Config.MAX_ITER  # 设置最大迭代次数
-        ),
-        'param_space': {  # 支持向量机超参数搜索空间
-            'model__kernel': Categorical(['linear', 'rbf', 'poly']),  # 核函数类型，分类选项
-            'model__C': Real(0.001, 1000, prior='log-uniform'),  # 正则化参数，使用对数均匀分布
-            'model__gamma': Real(0.0001, 100, prior='log-uniform'),  # 核函数的gamma参数，使用对数均匀分布
-            'model__degree': Integer(2, 5)  # 多项式核函数的次数，整数范围2到5
-        }
-    },
-    '直方图梯度提升树回归': {  # 直方图梯度提升树回归模型配置
-        'model': HistGradientBoostingRegressor(
-            max_iter=1000,  # 最大迭代次数
-            learning_rate=0.05,  # 学习率
-            max_depth=6,  # 树深度
-            random_state=Config.RANDOM_STATE,  # 设置随机种子以确保结果一致性
-            early_stopping=True,  # 启用早停
-            validation_fraction=0.1  # 验证集比例
-        ),
-        'param_space': {  # 直方图梯度提升树超参数搜索空间
-            'model__learning_rate': Real(0.01, 0.3, prior='log-uniform'),  # 学习率，使用对数均匀分布
-            'model__max_depth': Integer(4, 10),  # 树深度，整数范围4到10
-            'model__max_leaf_nodes': Integer(31, 255),  # 最大叶子节点数，整数范围31到255
-            'model__l2_regularization': Real(0.0, 1.0),  # L2正则化系数，实数范围0.0到1.0
-            'model__min_samples_leaf': Integer(1, 20)  # 叶子节点最小样本数，整数范围1到20
-        }
-    },
-    '随机梯度下降回归': {  # 随机梯度下降回归模型配置
-        'model': SGDRegressor(
-            loss='squared_error',  # 损失函数类型
-            penalty='l2',  # 正则化类型
-            alpha=0.0001,  # 正则化强度
-            max_iter=Config.MAX_ITER,  # 设置最大迭代次数
-            random_state=Config.RANDOM_STATE,  # 设置随机种子以确保结果一致性
-            early_stopping=True,  # 启用早停
-            validation_fraction=0.1  # 验证集比例
-        ),
-        'param_space': {  # 随机梯度下降超参数搜索空间
-            'model__loss': Categorical(['squared_error', 'huber', 'epsilon_insensitive']),  # 损失函数类型，分类选项
-            'model__penalty': Categorical(['l2', 'l1', 'elasticnet']),  # 正则化类型，分类选项
-            'model__alpha': Real(1e-6, 1, prior='log-uniform'),  # 正则化强度，使用对数均匀分布
-            'model__learning_rate': Categorical(['constant', 'optimal', 'invscaling', 'adaptive']),  # 学习率策略，分类选项
-            'model__eta0': Real(0.001, 1, prior='log-uniform')  # 初始学习率，使用对数均匀分布
-        }
+MODEL_CONFIG = {
+    '线性回归': {
+        'model': LinearRegression(),
+        'param_space': {}
     }
 }
 
-# ========== CatBoost模型条件导入 ==========
-# 仅当catboost包可用时，才将CatBoost回归模型添加到配置中
-if CatBoostRegressor is not None:
+if Real is not None:
+    MODEL_CONFIG.update({
+        '岭回归': {
+            'model': Ridge(random_state=Config.RANDOM_STATE),
+            'param_space': {'model__alpha': Real(0.001, 100, prior='log-uniform')}
+        },
+        'Lasso回归': {
+            'model': Lasso(max_iter=Config.LASSO_MAX_ITER, random_state=Config.RANDOM_STATE),
+            'param_space': {'model__alpha': Real(0.001, 100, prior='log-uniform')}
+        },
+        'K近邻回归': {
+            'model': KNeighborsRegressor(n_neighbors=5),
+            'param_space': {
+                'model__n_neighbors': Integer(3, 15),
+                'model__weights': Categorical(['uniform', 'distance']),
+                'model__metric': Categorical(['euclidean', 'manhattan'])
+            }
+        },
+        '决策树': {
+            'model': DecisionTreeRegressor(random_state=Config.RANDOM_STATE),
+            'param_space': {
+                'model__max_depth': Integer(2, 10),
+                'model__min_samples_split': Integer(2, 20),
+                'model__min_samples_leaf': Integer(1, 10),
+                'model__max_features': Categorical(['sqrt', 'log2', None])
+            }
+        },
+        '随机森林': {
+            'model': RandomForestRegressor(n_estimators=Config.RF_N_ESTIMATORS, random_state=Config.RANDOM_STATE),
+            'param_space': {
+                'model__n_estimators': Integer(50, 200),
+                'model__max_depth': Integer(3, 12),
+                'model__min_samples_split': Integer(2, 20),
+                'model__min_samples_leaf': Integer(1, 10),
+                'model__max_features': Categorical(['sqrt', 'log2', None])
+            }
+        },
+        '梯度提升': {
+            'model': GradientBoostingRegressor(n_estimators=Config.GB_N_ESTIMATORS, random_state=Config.RANDOM_STATE),
+            'param_space': {
+                'model__n_estimators': Integer(50, 200),
+                'model__learning_rate': Real(0.01, 0.3, prior='log-uniform'),
+                'model__max_depth': Integer(2, 8),
+                'model__min_samples_split': Integer(2, 20),
+                'model__min_samples_leaf': Integer(1, 10)
+            }
+        },
+        'AdaBoost': {
+            'model': AdaBoostRegressor(n_estimators=Config.ADA_N_ESTIMATORS, random_state=Config.RANDOM_STATE),
+            'param_space': {
+                'model__n_estimators': Integer(50, 200),
+                'model__learning_rate': Real(0.01, 1.0, prior='log-uniform')
+            }
+        },
+        '多层感知机': {
+            'model': MLPRegressor(hidden_layer_sizes=(100,), max_iter=Config.MAX_ITER,
+                                  random_state=Config.RANDOM_STATE, early_stopping=True),
+            'param_space': {
+                'model__hidden_layer_sizes': Categorical([(50,), (100,), (50, 50), (100, 50), (100, 100)]),
+                'model__activation': Categorical(['relu', 'tanh', 'logistic']),
+                'model__solver': Categorical(['adam', 'sgd']),
+                'model__learning_rate_init': Real(0.0001, 0.1, prior='log-uniform'),
+                'model__alpha': Real(0.0001, 0.1, prior='log-uniform')
+            }
+        },
+        '极端随机树': {
+            'model': ExtraTreesRegressor(n_estimators=Config.ET_N_ESTIMATORS, random_state=Config.RANDOM_STATE),
+            'param_space': {
+                'model__n_estimators': Integer(50, 200),
+                'model__max_depth': Integer(3, 12),
+                'model__min_samples_split': Integer(2, 20),
+                'model__min_samples_leaf': Integer(1, 10),
+                'model__max_features': Categorical(['sqrt', 'log2', None])
+            }
+        },
+        '弹性网络': {
+            'model': ElasticNet(max_iter=Config.MAX_ITER, random_state=Config.RANDOM_STATE),
+            'param_space': {
+                'model__alpha': Real(0.0001, 100, prior='log-uniform'),
+                'model__l1_ratio': Real(0.0, 1.0)
+            }
+        },
+        '高斯过程回归': {
+            'model': GaussianProcessRegressor(random_state=Config.RANDOM_STATE,
+                                               kernel=ConstantKernel(1.0) * RBF(length_scale=1.0) + WhiteKernel(noise_level=1.0),
+                                               normalize_y=True, n_restarts_optimizer=3),
+            'param_space': {'model__alpha': Real(1e-10, 1.0, prior='log-uniform')}
+        },
+        '贝叶斯岭回归': {
+            'model': BayesianRidge(compute_score=True, max_iter=300),
+            'param_space': {
+                'model__alpha_1': Real(1e-10, 1e-5, prior='log-uniform'),
+                'model__alpha_2': Real(1e-10, 1e-5, prior='log-uniform'),
+                'model__lambda_1': Real(1e-10, 1e-5, prior='log-uniform'),
+                'model__lambda_2': Real(1e-10, 1e-5, prior='log-uniform'),
+                'model__alpha_init': Real(0.001, 1, prior='log-uniform'),
+                'model__lambda_init': Real(0.001, 1, prior='log-uniform')
+            }
+        },
+        '多项式回归': {
+            'model': Pipeline(steps=[
+                ('poly', PolynomialFeatures(degree=2, include_bias=False)),
+                ('linear', LinearRegression())
+            ]),
+            'param_space': {
+                'model__poly__degree': Integer(2, 5),
+                'model__poly__include_bias': Categorical([False])
+            }
+        },
+        '支持向量机': {
+            'model': SVR(kernel='rbf', gamma='scale', max_iter=Config.MAX_ITER),
+            'param_space': {
+                'model__kernel': Categorical(['linear', 'rbf', 'poly']),
+                'model__C': Real(0.001, 1000, prior='log-uniform'),
+                'model__gamma': Real(0.0001, 100, prior='log-uniform'),
+                'model__degree': Integer(2, 5)
+            }
+        },
+        '直方图梯度提升树回归': {
+            'model': HistGradientBoostingRegressor(max_iter=1000, learning_rate=0.05, max_depth=6,
+                                                    random_state=Config.RANDOM_STATE, early_stopping=True,
+                                                    validation_fraction=0.1),
+            'param_space': {
+                'model__learning_rate': Real(0.01, 0.3, prior='log-uniform'),
+                'model__max_depth': Integer(4, 10),
+                'model__max_leaf_nodes': Integer(31, 255),
+                'model__l2_regularization': Real(0.0, 1.0),
+                'model__min_samples_leaf': Integer(1, 20)
+            }
+        },
+        '随机梯度下降回归': {
+            'model': SGDRegressor(loss='squared_error', penalty='l2', alpha=0.0001,
+                                   max_iter=Config.MAX_ITER, random_state=Config.RANDOM_STATE,
+                                   early_stopping=True, validation_fraction=0.1),
+            'param_space': {
+                'model__loss': Categorical(['squared_error', 'huber', 'epsilon_insensitive']),
+                'model__penalty': Categorical(['l2', 'l1', 'elasticnet']),
+                'model__alpha': Real(1e-6, 1, prior='log-uniform'),
+                'model__learning_rate': Categorical(['constant', 'optimal', 'invscaling', 'adaptive']),
+                'model__eta0': Real(0.001, 1, prior='log-uniform')
+            }
+        }
+    })
+
+if xgb is not None and Real is not None:
+    MODEL_CONFIG['XGBoost'] = {
+        'model': xgb.XGBRegressor(n_estimators=Config.XGB_N_ESTIMATORS, objective='reg:squarederror',
+                                    random_state=Config.RANDOM_STATE, verbosity=0),
+        'param_space': {
+            'model__n_estimators': Integer(50, 200),
+            'model__learning_rate': Real(0.01, 0.3, prior='log-uniform'),
+            'model__max_depth': Integer(2, 8),
+            'model__subsample': Real(0.5, 1.0),
+            'model__colsample_bytree': Real(0.5, 1.0),
+            'model__reg_alpha': Real(0.0, 10.0),
+            'model__reg_lambda': Real(0.0, 10.0)
+        }
+    }
+
+if lgb is not None and Real is not None:
+    MODEL_CONFIG['LightGBM'] = {
+        'model': lgb.LGBMRegressor(n_estimators=Config.LGB_N_ESTIMATORS, random_state=Config.RANDOM_STATE, verbose=-1),
+        'param_space': {
+            'model__n_estimators': Integer(50, 200),
+            'model__learning_rate': Real(0.01, 0.3, prior='log-uniform'),
+            'model__max_depth': Integer(2, 8),
+            'model__num_leaves': Integer(15, 127),
+            'model__subsample': Real(0.5, 1.0),
+            'model__colsample_bytree': Real(0.5, 1.0),
+            'model__reg_alpha': Real(0.0, 10.0),
+            'model__reg_lambda': Real(0.0, 10.0)
+        }
+    }
+
+if CatBoostRegressor is not None and Real is not None:
     MODEL_CONFIG['CatBoost回归'] = {
         'model': CatBoostRegressor(
-            iterations=1000,  # 迭代次数
-            learning_rate=0.05,  # 学习率
-            depth=6,  # 树深度
-            random_seed=Config.RANDOM_STATE,  # 设置随机种子以确保结果一致性
-            verbose=0,  # 关闭训练过程输出
-            early_stopping_rounds=100  # 早停轮数
+            iterations=1000,
+            learning_rate=0.05,
+            depth=6,
+            random_seed=Config.RANDOM_STATE,
+            verbose=0,
+            early_stopping_rounds=100
         ),
-        'param_space': {  # CatBoost超参数搜索空间
-            'model__learning_rate': Real(0.01, 0.3, prior='log-uniform'),  # 学习率，使用对数均匀分布
-            'model__depth': Integer(4, 10),  # 树深度，整数范围4到10
-            'model__l2_leaf_reg': Real(0.01, 10, prior='log-uniform'),  # L2正则化系数，使用对数均匀分布
-            'model__bagging_temperature': Real(0.0, 1.0)  # bagging温度参数，控制随机性
+        'param_space': {
+            'model__learning_rate': Real(0.01, 0.3, prior='log-uniform'),
+            'model__depth': Integer(4, 10),
+            'model__l2_leaf_reg': Real(0.01, 10, prior='log-uniform'),
+            'model__bagging_temperature': Real(0.0, 1.0)
         }
     }
