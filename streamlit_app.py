@@ -307,6 +307,7 @@ WEB_DIR = Path("web文件")
 def find_model_file():
     """查找模型文件"""
     possible_names = [
+        "高斯过程回归_best_model_R2_0.8927.pkl",
         "多层感知机_best_model_R2_0.8965.pkl",
         "多层感知机_best_model_R2_0.9049.pkl",
         "best_model.pkl"
@@ -817,8 +818,8 @@ def display_prediction_results(prediction, model_info, shap_explainer=None, shap
             """, unsafe_allow_html=True)
     
     # ==================== SHAP分析 ====================
-    # 显示SHAP解释
-    if shap_values is not None and shap_explainer is not None:
+    # 显示SHAP解释（shap_explainer可以为None，因为高斯过程回归使用数值方法）
+    if shap_values is not None:
         st.subheader("🔍 特征贡献分析")
         
         try:
@@ -1227,6 +1228,11 @@ def main():
             try:
                 # 准备输入数据
                 input_data = pd.DataFrame([inputs])
+                
+                # 调试信息
+                st.debug(f"输入数据列名: {input_data.columns.tolist()}")
+                st.debug(f"模型特征名称: {predictor.feature_names}")
+                st.debug(f"模型类型: {predictor.model_info.get('model_type', '未知')}")
                 
                 # 预测
                 prediction = predictor.predict(input_data)
