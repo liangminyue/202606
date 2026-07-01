@@ -499,7 +499,14 @@ class ModelPredictor:
                 """完整的预测函数，接受原始特征DataFrame"""
                 if isinstance(X, np.ndarray):
                     X = pd.DataFrame(X, columns=self.feature_names)
-                return self.model.predict(X)
+                # 高斯过程回归可能返回均值和方差两个值，只取均值
+                result = self.model.predict(X)
+                if isinstance(result, tuple):
+                    result = result[0]
+                # 确保返回的是1D数组
+                if hasattr(result, 'ndim') and result.ndim > 1:
+                    result = result.flatten()
+                return result
             
             # 创建背景数据集 - 使用合理的临床范围
             background_samples = []
