@@ -28,31 +28,20 @@ import json
 import warnings
 warnings.filterwarnings('ignore')
 
-import pickle
-import numpy.random._mt19937
+import sys
+import types
 
 class MT19937:
     def __new__(cls, *args, **kwargs):
         return np.random.RandomState()
 
-numpy.random._mt19937.MT19937 = MT19937
-
-class CompatibilityUnpickler(pickle.Unpickler):
-    """兼容旧版本numpy随机数生成器的自定义Unpickler"""
-    def find_class(self, module, name):
-        if module == 'numpy.random._mt19937' and name == 'MT19937':
-            return MT19937
-        return super().find_class(module, name)
+_mt19937_module = types.ModuleType('numpy.random._mt19937')
+_mt19937_module.MT19937 = MT19937
+sys.modules['numpy.random._mt19937'] = _mt19937_module
 
 def load_model_with_compatibility(model_path):
     """加载旧版本numpy保存的模型，处理MT19937兼容性问题"""
-    try:
-        return joblib.load(model_path)
-    except Exception as e:
-        if 'MT19937' in str(e) or 'BitGenerator' in str(e):
-            with open(model_path, 'rb') as f:
-                return CompatibilityUnpickler(f).load()
-        raise
+    return joblib.load(model_path)
 
 # 导入配置模块
 from config import Config
