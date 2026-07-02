@@ -29,7 +29,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # 导入配置模块
-from Config import Config
+from config import config
 
 # 设置页面配置
 st.set_page_config(
@@ -392,10 +392,10 @@ class ModelPredictor:
                 except:
                     pass
         
-        # 如果还是没有特征名称，尝试从Config获取
+        # 如果还是没有特征名称，尝试从config获取
         if len(self.feature_names) == 0:
             try:
-                from Config import Config
+                from config import config
                 # 使用配置中的特征
                 pass
             except:
@@ -1043,7 +1043,7 @@ def main():
     """主函数"""
     
     # 验证配置参数（必须在任何操作之前执行）
-    Config.validate_config()
+    config.validate_config()
     
     # ==================== 初始化Session State ====================
     if 'prediction_history' not in st.session_state:
