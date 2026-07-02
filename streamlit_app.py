@@ -448,7 +448,9 @@ class ModelPredictor:
         
         # 预测
         try:
+            print(f"预测输入数据:\n{input_df.to_string()}")
             prediction = self.model.predict(input_df)
+            print(f"预测结果: {prediction}")
             return prediction[0]
         except Exception as e:
             raise ValueError(f"预测失败: {str(e)}")
@@ -832,18 +834,24 @@ def display_prediction_results(prediction, model_info, shap_explainer=None, shap
         try:
             import matplotlib.pyplot as plt
             import matplotlib
+            from matplotlib.font_manager import FontProperties
             
             # 设置中文字体支持
-            # 尝试使用系统中文字体
             try:
-                # Windows系统常用中文字体
+                # 使用FontProperties加载中文字体
+                font_path = 'C:/Windows/Fonts/simhei.ttf'
+                chinese_font = FontProperties(fname=font_path, size=12)
+                
+                # 全局字体设置
                 plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi']
-                plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
+                plt.rcParams['axes.unicode_minus'] = False
                 plt.rcParams['font.family'] = 'sans-serif'
-                matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi']
-                matplotlib.rcParams['axes.unicode_minus'] = False
-            except:
-                pass
+            except Exception as font_error:
+                # 如果无法加载字体文件，使用系统默认字体
+                print(f"无法加载中文字体文件: {font_error}")
+                plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi']
+                plt.rcParams['axes.unicode_minus'] = False
+                chinese_font = None
             
             # 使用传入的特征名称或predictor的特征名称
             feature_names_list = shap_feature_names if shap_feature_names else (predictor.feature_names if predictor else None)
@@ -884,11 +892,18 @@ def display_prediction_results(prediction, model_info, shap_explainer=None, shap
                 
                 # 设置y轴标签为特征名称（中文）
                 ax.set_yticks(range(len(contrib_df)))
-                ax.set_yticklabels(contrib_df['特征'].tolist(), fontsize=12, fontfamily='sans-serif')
+                if chinese_font:
+                    ax.set_yticklabels(contrib_df['特征'].tolist(), fontsize=12, fontproperties=chinese_font)
+                else:
+                    ax.set_yticklabels(contrib_df['特征'].tolist(), fontsize=12)
                 ax.tick_params(axis='x', labelsize=11)
                 
-                ax.set_xlabel('SHAP值', fontsize=12, fontfamily='sans-serif')
-                ax.set_title('特征贡献分析', fontsize=14, fontfamily='sans-serif')
+                if chinese_font:
+                    ax.set_xlabel('SHAP值', fontsize=12, fontproperties=chinese_font)
+                    ax.set_title('特征贡献分析', fontsize=14, fontproperties=chinese_font)
+                else:
+                    ax.set_xlabel('SHAP值', fontsize=12)
+                    ax.set_title('特征贡献分析', fontsize=14)
                 ax.axvline(x=0, color='black', linestyle='-', linewidth=0.5)
                 
                 # 添加数值标签
