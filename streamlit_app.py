@@ -31,6 +31,11 @@ warnings.filterwarnings('ignore')
 # 导入配置模块
 from config import Config
 
+# 设置全局matplotlib中文字体支持（适用于Windows、Linux、macOS）
+import matplotlib.pyplot as plt
+plt.rcParams['font.sans-serif'] = ['Noto Sans CJK SC', 'Noto Sans CJK', 'Hiragino Sans GB', 'SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi', 'DejaVu Sans']
+plt.rcParams['axes.unicode_minus'] = False
+
 # 设置页面配置
 st.set_page_config(
     page_title="基于机器学习的地贫输血疗效血红蛋白智能测算工具",
@@ -503,6 +508,8 @@ class ModelPredictor:
                 return self.model.predict(X)
             
             # 创建背景数据集 - 使用合理的临床范围
+            # 设置随机种子确保SHAP值可重复（使用配置中的随机种子）
+            np.random.seed(Config.RANDOM_STATE)
             background_samples = []
             # 为每个特征创建多个合理范围内的值
             num_samples_per_feature = 5
@@ -736,10 +743,10 @@ def display_prediction_results(prediction, model_info, shap_explainer=None, shap
             import matplotlib
             
             # 设置中文字体支持
-            # 尝试使用系统中文字体
+            # 尝试使用系统中文字体，按优先级排列
             try:
-                # Windows系统常用中文字体
-                plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi']
+                # 支持多平台：Linux(Noto Sans CJK), macOS(Hiragino Sans GB), Windows(SimHei)
+                plt.rcParams['font.sans-serif'] = ['Noto Sans CJK SC', 'Noto Sans CJK', 'Hiragino Sans GB', 'SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi', 'DejaVu Sans']
                 plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
             except:
                 pass
