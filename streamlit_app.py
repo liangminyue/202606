@@ -539,6 +539,10 @@ class ModelPredictor:
                 return result
             
             # 创建背景数据集 - 使用基于特征名称的合理临床范围
+            # 设置随机种子确保每次生成相同的背景数据，保证SHAP值计算结果的可重复性
+            original_seed = np.random.get_state()
+            np.random.seed(42)
+            
             background_samples = []
             for i in range(50):  # 创建50个背景样本
                 sample_dict = {}
@@ -559,6 +563,9 @@ class ModelPredictor:
                     else:
                         sample_dict[feat] = np.random.uniform(0, 100)
                 background_samples.append(sample_dict)
+            
+            # 恢复原始随机种子状态
+            np.random.set_state(original_seed)
             
             background_df = pd.DataFrame(background_samples)
             
@@ -832,6 +839,9 @@ def display_prediction_results(prediction, model_info, shap_explainer=None, shap
                 # Windows系统常用中文字体
                 plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi']
                 plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
+                plt.rcParams['font.family'] = 'sans-serif'
+                matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi']
+                matplotlib.rcParams['axes.unicode_minus'] = False
             except:
                 pass
             
@@ -864,16 +874,21 @@ def display_prediction_results(prediction, model_info, shap_explainer=None, shap
                 
                 # 先创建条形图
                 fig, ax = plt.subplots(figsize=(10, 3))
+                
+                # 设置字体
+                plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi']
+                plt.rcParams['axes.unicode_minus'] = False
+                
                 colors = ['#2ecc71' if v > 0 else '#e74c3c' for v in contrib_df['SHAP值']]
                 bars = ax.barh(range(len(contrib_df)), contrib_df['SHAP值'], color=colors)
                 
                 # 设置y轴标签为特征名称（中文）
                 ax.set_yticks(range(len(contrib_df)))
-                ax.set_yticklabels(contrib_df['特征'].tolist(), fontsize=12)
+                ax.set_yticklabels(contrib_df['特征'].tolist(), fontsize=12, fontfamily='sans-serif')
                 ax.tick_params(axis='x', labelsize=11)
                 
-                ax.set_xlabel('SHAP值', fontsize=12)
-                ax.set_title('特征贡献分析', fontsize=14)
+                ax.set_xlabel('SHAP值', fontsize=12, fontfamily='sans-serif')
+                ax.set_title('特征贡献分析', fontsize=14, fontfamily='sans-serif')
                 ax.axvline(x=0, color='black', linestyle='-', linewidth=0.5)
                 
                 # 添加数值标签
