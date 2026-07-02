@@ -837,21 +837,40 @@ def display_prediction_results(prediction, model_info, shap_explainer=None, shap
             from matplotlib.font_manager import FontProperties
             
             # 设置中文字体支持
-            try:
-                # 使用FontProperties加载中文字体
-                font_path = 'C:/Windows/Fonts/simhei.ttf'
-                chinese_font = FontProperties(fname=font_path, size=12)
-                
-                # 全局字体设置
-                plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi']
-                plt.rcParams['axes.unicode_minus'] = False
-                plt.rcParams['font.family'] = 'sans-serif'
-            except Exception as font_error:
-                # 如果无法加载字体文件，使用系统默认字体
-                print(f"无法加载中文字体文件: {font_error}")
-                plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi']
-                plt.rcParams['axes.unicode_minus'] = False
-                chinese_font = None
+            import os
+            chinese_font = None
+            
+            # 根据操作系统选择字体路径
+            font_paths = []
+            if os.name == 'nt':
+                font_paths = [
+                    'C:/Windows/Fonts/simhei.ttf',
+                    'C:/Windows/Fonts/msyh.ttc',
+                    'C:/Windows/Fonts/simsun.ttc',
+                    'C:/Windows/Fonts/kaiu.ttf'
+                ]
+            else:
+                font_paths = [
+                    '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+                    '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
+                    '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+                    '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc'
+                ]
+            
+            # 尝试加载字体
+            for font_path in font_paths:
+                if os.path.exists(font_path):
+                    try:
+                        chinese_font = FontProperties(fname=font_path, size=12)
+                        print(f"成功加载中文字体: {font_path}")
+                        break
+                    except Exception as e:
+                        print(f"加载字体失败 {font_path}: {e}")
+            
+            # 全局字体设置
+            plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi', 'WenQuanYi Micro Hei', 'Noto Sans CJK']
+            plt.rcParams['axes.unicode_minus'] = False
+            plt.rcParams['font.family'] = 'sans-serif'
             
             # 使用传入的特征名称或predictor的特征名称
             feature_names_list = shap_feature_names if shap_feature_names else (predictor.feature_names if predictor else None)
