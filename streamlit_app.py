@@ -29,7 +29,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # 导入配置模块
-from config import Config
+from Config import Config
 
 # 设置页面配置
 st.set_page_config(
@@ -307,7 +307,6 @@ WEB_DIR = Path("web文件")
 def find_model_file():
     """查找模型文件"""
     possible_names = [
-        "高斯过程回归_best_model_R2_0.8927.pkl",
         "多层感知机_best_model_R2_0.8965.pkl",
         "多层感知机_best_model_R2_0.9049.pkl",
         "best_model.pkl"
@@ -340,6 +339,7 @@ class ModelPredictor:
     def load_model(self, model_path):
         """加载模型"""
         try:
+            # 加载模型
             self.model = joblib.load(model_path)
             self.model_loaded = True
             
@@ -392,10 +392,10 @@ class ModelPredictor:
                 except:
                     pass
         
-        # 如果还是没有特征名称，尝试从config获取
+        # 如果还是没有特征名称，尝试从Config获取
         if len(self.feature_names) == 0:
             try:
-                from config import Config
+                from Config import Config
                 # 使用配置中的特征
                 pass
             except:
@@ -448,9 +448,7 @@ class ModelPredictor:
         
         # 预测
         try:
-            print(f"预测输入数据:\n{input_df.to_string()}")
             prediction = self.model.predict(input_df)
-            print(f"预测结果: {prediction}")
             return prediction[0]
         except Exception as e:
             raise ValueError(f"预测失败: {str(e)}")
@@ -481,9 +479,7 @@ class ModelPredictor:
     def get_shap_values(self, input_data):
         """获取SHAP解释值
         
-        对于不同类型的模型使用不同的SHAP解释方法：
-        - 高斯过程回归(GaussianProcessRegressor)：使用数值梯度方法（leave-one-out边际贡献）
-        - 其他模型：使用KernelExplainer在原始特征空间计算SHAP值
+        对于MLPRegressor等神经网络模型，在原始特征空间使用KernelExplainer
         """
         try:
             import shap
@@ -499,96 +495,50 @@ class ModelPredictor:
             else:
                 input_df = pd.DataFrame([input_data], columns=self.feature_names)
             
-            # 获取底层模型对象（处理Pipeline情况）
-            model_obj = self.model
-            if hasattr(self.model, 'named_steps') and 'model' in self.model.named_steps:
-                model_obj = self.model.named_steps['model']
-            
-            # 判断是否为高斯过程回归模型
-            is_gp_model = False
-            try:
-                from sklearn.gaussian_process import GaussianProcessRegressor
-                is_gp_model = isinstance(model_obj, GaussianProcessRegressor)
-            except:
-                pass
-            
             # 定义完整的预测函数（包括预处理）
             def full_model_predict(X):
-                """完整的预测函数，接受原始特征DataFrame或numpy数组"""
+                """完整的预测函数，接受原始特征DataFrame"""
                 if isinstance(X, np.ndarray):
-                    # 确保二维数组
-                    if X.ndim == 1:
-                        X = X.reshape(1, -1)
                     X = pd.DataFrame(X, columns=self.feature_names)
-                elif isinstance(X, list):
-                    X = pd.DataFrame([X], columns=self.feature_names)
-                
-                # 确保列顺序正确
-                if isinstance(X, pd.DataFrame):
-                    X = X[self.feature_names]
-                
-                # 预测
-                result = self.model.predict(X)
-                
-                # 确保返回的是1D数组
-                if hasattr(result, 'ndim') and result.ndim > 1:
-                    result = result.flatten()
-                
-                # 确保返回numpy数组（KernelExplainer要求）
-                if not isinstance(result, np.ndarray):
-                    result = np.array([result])
-                
-                return result
+                return self.model.predict(X)
             
-            # 创建背景数据集 - 使用基于特征名称的合理临床范围
-            # 设置随机种子确保每次生成相同的背景数据，保证SHAP值计算结果的可重复性
-            original_seed = np.random.get_state()
-            np.random.seed(42)
-            
+            # 创建背景数据集 - 使用合理的临床范围
             background_samples = []
-            for i in range(50):  # 创建50个背景样本
+            # 为每个特征创建多个合理范围内的值
+            num_samples_per_feature = 5
+            for i in range(20):  # 创建20个背景样本
                 sample_dict = {}
                 for feat in self.feature_names:
-                    feat_lower = str(feat).lower()
-                    if '输血' in str(feat):
-                        sample_dict[feat] = np.random.uniform(0, 15)
-                    elif 'hb' in feat_lower or 'hgb' in feat_lower:
-                        sample_dict[feat] = np.random.uniform(40, 180)
-                    elif '年龄' in str(feat):
+                    if '输血量' in feat:
+                        sample_dict[feat] = np.random.uniform(0, 10)
+                    elif 'Hb' in feat or 'HGB' in feat:
+                        sample_dict[feat] = np.random.uniform(50, 180)
+                    elif '年龄' in feat:
                         sample_dict[feat] = np.random.randint(0, 100)
-                    elif '身高' in str(feat):
-                        sample_dict[feat] = np.random.randint(80, 220)
-                    elif '体重' in str(feat):
-                        sample_dict[feat] = np.random.uniform(10, 200)
-                    elif 'plt' in feat_lower:
-                        sample_dict[feat] = np.random.uniform(50, 500)
+                    elif '身高' in feat:
+                        sample_dict[feat] = np.random.randint(100, 200)
+                    elif '体重' in feat:
+                        sample_dict[feat] = np.random.uniform(30, 150)
                     else:
                         sample_dict[feat] = np.random.uniform(0, 100)
                 background_samples.append(sample_dict)
             
-            # 恢复原始随机种子状态
-            np.random.set_state(original_seed)
-            
             background_df = pd.DataFrame(background_samples)
             
-            # 对于高斯过程回归模型，直接使用数值梯度方法
-            # GradientExplainer不支持sklearn模型，KernelExplainer对GP不稳定
-            if is_gp_model:
-                shap_values = self._compute_gp_shap_numerical(input_df, background_df)
-                explainer = None
-            else:
-                # 使用KernelExplainer在原始特征空间计算SHAP值
-                explainer = shap.KernelExplainer(full_model_predict, background_df)
-                shap_values = explainer.shap_values(input_df)
-                
-                # 处理SHAP值格式
-                if isinstance(shap_values, list):
+            # 使用KernelExplainer在原始特征空间计算SHAP值
+            explainer = shap.KernelExplainer(full_model_predict, background_df)
+            
+            # 计算SHAP值
+            shap_values = explainer.shap_values(input_df)
+            
+            # 处理SHAP值格式
+            if isinstance(shap_values, list):
+                shap_values = shap_values[0]  # 对于多输出模型
+            
+            # 确保shap_values是正确的形状（单个样本）
+            if hasattr(shap_values, 'shape') and len(shap_values.shape) > 1:
+                if shap_values.shape[0] == 1:
                     shap_values = shap_values[0]
-                
-                # 确保shap_values是正确的形状（单个样本）
-                if hasattr(shap_values, 'shape') and len(shap_values.shape) > 1:
-                    if shap_values.shape[0] == 1:
-                        shap_values = shap_values[0]
             
             return explainer, shap_values, self.feature_names
         except Exception as e:
@@ -596,56 +546,6 @@ class ModelPredictor:
             import traceback
             st.warning(f"详细错误: {traceback.format_exc()}")
             return None, None, None
-    
-    def _compute_gp_shap_numerical(self, input_df, background_df):
-        """使用数值梯度方法计算高斯过程回归的SHAP值
-        
-        对于高斯过程回归等难以使用标准SHAP解释器的模型，
-        使用leave-one-out边际贡献方法近似计算每个特征的贡献。
-        
-        参数:
-            input_df (pd.DataFrame): 待解释的输入数据
-            background_df (pd.DataFrame): 背景数据集
-        
-        返回:
-            np.ndarray: SHAP值数组
-        """
-        try:
-            # 获取输入数据的预测值（Pipeline.predict返回ndarray）
-            input_pred = self.model.predict(input_df[self.feature_names])
-            # 确保获取标量值
-            if hasattr(input_pred, 'ndim') and input_pred.ndim > 0:
-                input_pred = input_pred[0]
-            
-            # 使用数值方法计算每个特征的SHAP值
-            shap_values = []
-            input_array = input_df.values[0] if len(input_df) == 1 else input_df.values
-            
-            for i, feat in enumerate(self.feature_names):
-                # 获取该特征在背景数据中的分布
-                feat_distribution = background_df[feat].values
-                
-                # 计算该特征被移除时的预测值
-                # 使用背景数据中该特征的均值替代输入值
-                masked_input = input_array.copy()
-                masked_input[i] = np.mean(feat_distribution)
-                
-                masked_df = pd.DataFrame([masked_input], columns=self.feature_names)
-                masked_pred = self.model.predict(masked_df)
-                
-                # 确保获取标量值
-                if hasattr(masked_pred, 'ndim') and masked_pred.ndim > 0:
-                    masked_pred = masked_pred[0]
-                
-                # SHAP值 = 原始预测 - 特征被移除后的预测
-                shap_value = input_pred - masked_pred
-                shap_values.append(shap_value)
-            
-            return np.array(shap_values)
-        
-        except Exception as e:
-            st.warning(f"数值梯度SHAP计算失败: {str(e)}")
-            return np.zeros(len(self.feature_names))
 
 
 def create_input_widgets(feature_names, feature_defaults=None, categorical_options_desc=None):
@@ -827,50 +727,22 @@ def display_prediction_results(prediction, model_info, shap_explainer=None, shap
             """, unsafe_allow_html=True)
     
     # ==================== SHAP分析 ====================
-    # 显示SHAP解释（shap_explainer可以为None，因为高斯过程回归使用数值方法）
-    if shap_values is not None:
+    # 显示SHAP解释
+    if shap_values is not None and shap_explainer is not None:
         st.subheader("🔍 特征贡献分析")
         
         try:
             import matplotlib.pyplot as plt
             import matplotlib
-            from matplotlib.font_manager import FontProperties
             
             # 设置中文字体支持
-            import os
-            chinese_font = None
-            
-            # 根据操作系统选择字体路径
-            font_paths = []
-            if os.name == 'nt':
-                font_paths = [
-                    'C:/Windows/Fonts/simhei.ttf',
-                    'C:/Windows/Fonts/msyh.ttc',
-                    'C:/Windows/Fonts/simsun.ttc',
-                    'C:/Windows/Fonts/kaiu.ttf'
-                ]
-            else:
-                font_paths = [
-                    '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
-                    '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
-                    '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
-                    '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc'
-                ]
-            
-            # 尝试加载字体
-            for font_path in font_paths:
-                if os.path.exists(font_path):
-                    try:
-                        chinese_font = FontProperties(fname=font_path, size=12)
-                        print(f"成功加载中文字体: {font_path}")
-                        break
-                    except Exception as e:
-                        print(f"加载字体失败 {font_path}: {e}")
-            
-            # 全局字体设置
-            plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi', 'WenQuanYi Micro Hei', 'Noto Sans CJK']
-            plt.rcParams['axes.unicode_minus'] = False
-            plt.rcParams['font.family'] = 'sans-serif'
+            # 尝试使用系统中文字体
+            try:
+                # Windows系统常用中文字体
+                plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi']
+                plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
+            except:
+                pass
             
             # 使用传入的特征名称或predictor的特征名称
             feature_names_list = shap_feature_names if shap_feature_names else (predictor.feature_names if predictor else None)
@@ -901,28 +773,16 @@ def display_prediction_results(prediction, model_info, shap_explainer=None, shap
                 
                 # 先创建条形图
                 fig, ax = plt.subplots(figsize=(10, 3))
-                
-                # 设置字体
-                plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'KaiTi']
-                plt.rcParams['axes.unicode_minus'] = False
-                
                 colors = ['#2ecc71' if v > 0 else '#e74c3c' for v in contrib_df['SHAP值']]
                 bars = ax.barh(range(len(contrib_df)), contrib_df['SHAP值'], color=colors)
                 
                 # 设置y轴标签为特征名称（中文）
                 ax.set_yticks(range(len(contrib_df)))
-                if chinese_font:
-                    ax.set_yticklabels(contrib_df['特征'].tolist(), fontsize=12, fontproperties=chinese_font)
-                else:
-                    ax.set_yticklabels(contrib_df['特征'].tolist(), fontsize=12)
+                ax.set_yticklabels(contrib_df['特征'].tolist(), fontsize=12)
                 ax.tick_params(axis='x', labelsize=11)
                 
-                if chinese_font:
-                    ax.set_xlabel('SHAP值', fontsize=12, fontproperties=chinese_font)
-                    ax.set_title('特征贡献分析', fontsize=14, fontproperties=chinese_font)
-                else:
-                    ax.set_xlabel('SHAP值', fontsize=12)
-                    ax.set_title('特征贡献分析', fontsize=14)
+                ax.set_xlabel('SHAP值', fontsize=12)
+                ax.set_title('特征贡献分析', fontsize=14)
                 ax.axvline(x=0, color='black', linestyle='-', linewidth=0.5)
                 
                 # 添加数值标签
@@ -1126,14 +986,6 @@ def load_features_from_csv():
                     'step': 0.5,
                     'type': 'numerical'
                 }
-            elif 'PLT' in feat or 'plt' in feat.lower():
-                feature_defaults[feat] = {
-                    'default': 300.0,
-                    'min': 30.0,
-                    'max': 1200.0,
-                    'step': 1.0,
-                    'type': 'numerical'
-                }
             else:
                 feature_defaults[feat] = {
                     'default': 0.0,
@@ -1277,11 +1129,6 @@ def main():
             try:
                 # 准备输入数据
                 input_data = pd.DataFrame([inputs])
-                
-                # 调试信息
-                print(f"输入数据列名: {input_data.columns.tolist()}")
-                print(f"模型特征名称: {predictor.feature_names}")
-                print(f"模型类型: {predictor.model_info.get('model_type', '未知')}")
                 
                 # 预测
                 prediction = predictor.predict(input_data)
