@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.idea/
+.workbuddy/
+多次实验结果/
+catboost_info/
+*.log
+.DS_Store
